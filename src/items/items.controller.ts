@@ -15,7 +15,10 @@ import { CreateItemDto } from './dto/create-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
 import { Item } from './item.entity';
 
-@Controller('items')
+// Version lives on the controller so the whole resource serves under /v1/items.
+// @Version() is a method decorator in Nest 10; the controller-level equivalent
+// is the { version } option, which yields the identical URI-versioned surface.
+@Controller({ path: 'items', version: '1' })
 export class ItemsController {
   constructor(private readonly items: ItemsService) {}
 

@@ -13,21 +13,36 @@ check, and Postgres migrations, all wired so the fleet can deploy it unchanged.
   with it **except** `GET /health`.
 - **Schema:** `synchronize` is off everywhere. All schema changes go through
   migrations (`src/migrations/`), run automatically on start.
+- **Versioning:** URI versioning is enabled (`VersioningType.URI`,
+  `defaultVersion: '1'`). Routes resolve as **global prefix → version → route**,
+  so the `items` resource serves under `/v1/...`. `GET /health` opts out with
+  `VERSION_NEUTRAL` and stays at plain `/health`.
 
 ### Endpoints
 
-| Method | Path          | Success | Notes                                   |
-| ------ | ------------- | ------- | --------------------------------------- |
-| GET    | `/health`     | 200     | Terminus check with a live DB ping      |
-| POST   | `/items`      | 201     | Body `{ name, description? }`           |
-| GET    | `/items`      | 200     | Newest first                            |
-| GET    | `/items/:id`  | 200     | 404 if missing, 400 if `id` isn't a UUID |
-| PATCH  | `/items/:id`  | 200     | Partial update; 404 if missing          |
-| DELETE | `/items/:id`  | 204     | 404 if missing                          |
+| Method | Path            | Success | Notes                                   |
+| ------ | --------------- | ------- | --------------------------------------- |
+| GET    | `/health`       | 200     | Terminus check with a live DB ping; unversioned |
+| POST   | `/v1/items`     | 201     | Body `{ name, description? }`           |
+| GET    | `/v1/items`     | 200     | Newest first                            |
+| GET    | `/v1/items/:id` | 200     | 404 if missing, 400 if `id` isn't a UUID |
+| PATCH  | `/v1/items/:id` | 200     | Partial update; 404 if missing          |
+| DELETE | `/v1/items/:id` | 204     | 404 if missing                          |
 
-Invalid or unknown-field bodies are rejected with 400 by the global
-`ValidationPipe`. An `item` is `{ id, name, description, createdAt }` where
-`createdAt` is an ISO timestamp.
+The version segment is required: `GET /items` (no `/v1`) returns 404. Invalid or
+unknown-field bodies are rejected with 400 by the global `ValidationPipe`. An
+`item` is `{ id, name, description, createdAt }` where `createdAt` is an ISO
+timestamp.
+
+#### Introducing a v2
+
+The version lives on the controller, so a second version is additive — the `/v1`
+routes keep working untouched. Either add a controller with
+`@Controller({ path: '...', version: '2' })` to serve it at `/v2/...` (or
+`@Version('2')` on an individual route method), or add a new versioned module for
+the v2 surface. Routes without a version fall back to the `defaultVersion`
+(`'1'`); mark any route that must answer on every version with `VERSION_NEUTRAL`,
+as `/health` does.
 
 ### Running it
 

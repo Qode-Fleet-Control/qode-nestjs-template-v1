@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { RequestMethod, ValidationPipe } from '@nestjs/common';
+import { RequestMethod, ValidationPipe, VersioningType } from '@nestjs/common';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -21,6 +21,11 @@ async function bootstrap() {
       exclude: [{ path: 'health', method: RequestMethod.GET }],
     });
   }
+
+  // URI versioning: routes resolve as global prefix -> version -> route, so the
+  // items resource serves under /{BASE_PATH}/v1/.... /health opts out with
+  // VERSION_NEUTRAL and stays unprefixed for the fleet's readiness probe.
+  app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
 
   await app.listen(process.env.PORT ?? 3000, '0.0.0.0');
 }
