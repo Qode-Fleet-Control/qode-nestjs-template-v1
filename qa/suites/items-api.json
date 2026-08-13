@@ -21,7 +21,7 @@
       "tags": ["health", "smoke"],
       "steps": [
         {
-          "_note": "GET /health is unversioned and unprefixed; status:200 pins the code (a non-200 gates the step).",
+          "_note": "GET /health is unversioned and unprefixed; status:200 pins the code (a non-200 gates the step). ROOT-MODE ASSUMPTION: this path assumes an empty-BASE_PATH (root-mode) deployment. Since NT-14 removed the /health exclusion from setGlobalPrefix, a fleet deployment with BASE_PATH injected serves health at /<BASE_PATH>/health, not /health; the harness cannot inject BASE_PATH per-run (documented in _note_prefixed_mode).",
           "kind": "action",
           "op": "api",
           "intent": "GET /health returns 200",
@@ -211,7 +211,7 @@
       "_note": "NT-10 set `trust proxy` so req.protocol reflects X-Forwarded-Proto from Kong. There is no HTTPS-redirect middleware, so a forwarded https hop must be a no-op: the request still resolves to a 200, never a 4xx or a 3xx redirect. status:200 pins that exactly — httpx does not follow redirects, so a 301/302 loop or a 400 fails the step.",
       "steps": [
         {
-          "_note": "The unversioned readiness probe stays reachable and 200 with a forwarded-proto hop.",
+          "_note": "The unversioned readiness probe stays reachable and 200 with a forwarded-proto hop. ROOT-MODE ASSUMPTION: this path assumes an empty-BASE_PATH (root-mode) deployment. Since NT-14 removed the /health exclusion from setGlobalPrefix, a fleet deployment with BASE_PATH injected serves health at /<BASE_PATH>/health, not /health; the harness cannot inject BASE_PATH per-run (documented in _note_prefixed_mode).",
           "kind": "action",
           "op": "api",
           "intent": "GET /health with X-Forwarded-Proto: https returns 200 (no redirect, no 400)",
@@ -221,7 +221,7 @@
           "status": 200
         },
         {
-          "_note": "A versioned route still resolves under the forwarded-proto hop — no redirect loop introduced by trusting the proxy.",
+          "_note": "A versioned route still resolves under the forwarded-proto hop — no redirect loop introduced by trusting the proxy. ROOT-MODE ASSUMPTION: this path assumes an empty-BASE_PATH (root-mode) deployment. In a fleet deployment with BASE_PATH injected the versioned route resolves at /<BASE_PATH>/v1/items; the harness cannot inject BASE_PATH per-run (documented in _note_prefixed_mode).",
           "kind": "action",
           "op": "api",
           "intent": "GET /v1/items with X-Forwarded-Proto: https returns 200 (no redirect, no 400)",
