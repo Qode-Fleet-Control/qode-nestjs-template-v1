@@ -9,15 +9,38 @@ check, and Postgres migrations, all wired so the fleet can deploy it unchanged.
 - **Stack:** NestJS 10, TypeORM 0.3 over Postgres (`pg`), `class-validator` DTOs.
 - **Config:** the database connection is read from `DATABASE_URL` (injected by the
   fleet; never hardcoded). `PORT` is read at boot — the server listens on
-  `0.0.0.0:$PORT`. The fleet gives each app its own subdomain and Kong strips the
-  path, so routes serve at the domain **root** (`/v1/...`, and `/health` at `/`);
-  the app does **not** prefix its routes.
+  `0.0.0.0:$PORT`. `BASE_PATH` controls where the routes mount — see
+  [Routing and `BASE_PATH`](#routing-and-base_path) below.
 - **Schema:** `synchronize` is off everywhere. All schema changes go through
   migrations (`src/migrations/`), run automatically on start.
 - **Versioning:** URI versioning is enabled (`VersioningType.URI`,
   `defaultVersion: '1'`). Routes resolve as **version → route**, so the `items`
   resource serves under `/v1/...`. `GET /health` opts out with
   `VERSION_NEUTRAL` and stays at plain `/health`.
+
+### Routing and `BASE_PATH`
+
+Where the app's routes mount depends on `BASE_PATH`, which supports two operating
+modes:
+
+- **Fleet / Kong mode (the default).** Leave `BASE_PATH` empty or unset. The fleet
+  gives each app its own subdomain and Kong routes it at `/` with `strip-path: true`,
+  so the app serves at the domain **root** — `/v1/items`, `/health`, and so on. Set
+  nothing:
+
+  ```sh
+  # BASE_PATH unset (or "")
+  ```
+
+- **Path-mounting proxy mode.** When a shared proxy mounts the app under a sub-path
+  instead of a dedicated subdomain, set `BASE_PATH` to that prefix, with a leading
+  slash and no trailing slash. The app then prefixes every route with it — e.g.
+  `/v1/items` becomes `/yourprefix/v1/items`. `/health` stays at the root so a direct
+  pod probe can reach it without knowing the prefix:
+
+  ```sh
+  BASE_PATH=/yourprefix
+  ```
 
 ### Endpoints
 
