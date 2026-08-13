@@ -34,6 +34,29 @@ unknown-field bodies are rejected with 400 by the global `ValidationPipe`. An
 `item` is `{ id, name, description, createdAt }` where `createdAt` is an ISO
 timestamp.
 
+#### Enabling / disabling versions (`API_VERSIONS_ENABLED`)
+
+`API_VERSIONS_ENABLED` is a comma-separated list of the API versions the app
+serves — `API_VERSIONS_ENABLED='1'` or `API_VERSIONS_ENABLED='1,2'`. **Unset
+defaults to `'1'`**, so a stock deploy serves v1 with no configuration.
+
+A global `VersionGate` guard resolves the version of the matched route and, when
+that version is not in the enabled set, returns **`410 Gone`** (e.g. `API v2 is
+disabled`). This is distinct from a **`404`**, which is what an unknown version
+segment (`/v9/...`, a version that never existed) returns from the router. So:
+
+- `410 Gone` — a real, known version that is currently switched off.
+- `404 Not Found` — a version segment that was never mounted.
+
+`GET /health` is `VERSION_NEUTRAL` and is **exempt** — it keeps returning `200`
+regardless of `API_VERSIONS_ENABLED`, so the readiness probe is never gated.
+
+Flipping it is env-only: change `API_VERSIONS_ENABLED` and **restart/reload the
+fleet** (`bin/restart` or `bin/reload`). It takes effect on the next boot with no
+rebuild, since runtime deploys here are operator-controlled. For example, setting
+`API_VERSIONS_ENABLED='2'` (excluding `'1'`) makes every `/v1/...` route return
+`410` while `/health` still returns `200`.
+
 #### Introducing a v2
 
 The version lives on the controller, so a second version is additive — the `/v1`
@@ -50,6 +73,12 @@ as `/health` does.
 # Standalone (needs a reachable Postgres in DATABASE_URL):
 export DATABASE_URL='postgres://user:pass@host:5432/db'
 PORT=3001 bin/run          # npm ci -> build -> migrate -> serve on :3001
+curl http://localhost:3001/health   # -> 200
+curl http://localhost:3001/v1/items # -> 200
+
+# Disable v1 to see the 410 gate (health stays exempt):
+API_VERSIONS_ENABLED='2' PORT=3001 bin/run
+curl http://localhost:3001/v1/items # -> 410 (API v1 is disabled)
 curl http://localhost:3001/health   # -> 200
 
 # Under the fleet: it injects PORT / BASE_PATH / DATABASE_URL and calls bin/run.
