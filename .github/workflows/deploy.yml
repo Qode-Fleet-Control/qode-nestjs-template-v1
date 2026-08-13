@@ -1,0 +1,68 @@
+# Build this repo's Dockerfile and push it to GCP Artifact Registry, tagged per branch.
+#
+# Auth is Workload Identity Federation — GitHub mints an OIDC token for this workflow,
+# Google exchanges it for a short-lived impersonation of SERVICE_ACCOUNT. No JSON key
+# is ever stored in this repo. The exchange only works once the repo is bound in the
+# WIF pool; the fleet writes that binding when it provisions the project (and the
+# preflight panel's "Image build & push" area re-does it on demand).
+#
+# The four secrets below are set on the repo by the fleet at provisioning time:
+#   SERVICE_ACCOUNT             deploy SA to impersonate
+#   WORKLOAD_IDENTITY_PROVIDER  projects/<n>/locations/global/workloadIdentityPools/<p>/providers/<x>
+#   ARTIFACT_REGISTRY_REGION    registry HOST, e.g. asia-southeast1-docker.pkg.dev
+#   ARTIFACT_REGISTRY           <gcp-project>/<repository>
+#
+# No `environment:` here, unlike the hand-written workflows in the fleet's own repos.
+# Those keep their secrets on per-branch GitHub Environments; a provisioned project has
+# one trunk and its secrets live on the repo, so naming an environment would only make
+# GitHub auto-create an empty one and add a place for the values to disagree.
+name: Deploy (reusable)
+
+on:
+  workflow_call:
+
+jobs:
+  build:
+    permissions:
+      id-token: write
+      contents: read
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: '>= 363.0.0'
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ secrets.ARTIFACT_REGISTRY_REGION }} --quiet
+
+      # The image name is derived from the repo, not hardcoded, so this file is
+      # identical in every project the fleet provisions and a rename cannot leave a
+      # workflow pushing under the old name.
+      - name: Derive the image name
+        id: img
+        run: echo "repo_name=${GITHUB_REPOSITORY#*/}" >> "$GITHUB_OUTPUT"
+
+      # Tagged per BRANCH (…-<ref_name>:latest), which is the convention k8smgr's
+      # imageRepoTmpl and the dashboard's rollout both read. The ref you dispatch on
+      # therefore decides which tag gets refreshed.
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: ${{ secrets.ARTIFACT_REGISTRY_REGION }}/${{ secrets.ARTIFACT_REGISTRY }}/${{ steps.img.outputs.repo_name }}-${{ github.ref_name }}:latest
+          build-args: |
+            BUILD_ID=${{ github.sha }}
