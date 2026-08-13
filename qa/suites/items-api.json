@@ -1,0 +1,207 @@
+{
+  "_about": "QA scenario suite for the items API (NT-3, verifies merged NT-2). Pure JSON/HTTP — no browser DOM. Every scenario drives the real API with `api` steps and asserts the outcome with `capture_equals` (owned-data by form, per SUITES.md §8), namespacing created rows with {{run_id}}. The CRUD round-trip proves the backend effect by deleting the row and re-GETting it for a 404. The `_about`/`_note` fields are documentation only and ignored by the loader.",
+  "schema_version": "1.0.0",
+  "run_id": "items-api",
+  "config": {
+    "base_url": "http://localhost:3000",
+    "parallelism": 4,
+    "video": "off",
+    "default_timeout_ms": 15000
+  },
+  "namespace": {
+    "run_id": "items-api",
+    "email": "qa+items-api@qode.gg",
+    "tag": "QA RUN items-api"
+  },
+  "scenarios": [
+    {
+      "name": "Health check responds 200 at the unprefixed root",
+      "tags": ["health", "smoke"],
+      "steps": [
+        {
+          "_note": "GET /health is unversioned and unprefixed; status:200 pins the code (a non-200 gates the step).",
+          "kind": "action",
+          "op": "api",
+          "intent": "GET /health returns 200",
+          "method": "GET",
+          "api_path": "/health",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "name": "Items CRUD round-trip: create, read, list, update, delete, then 404",
+      "tags": ["items", "crud", "happy-path"],
+      "steps": [
+        {
+          "_note": "Create a namespaced item. status:201 asserts the created code; capturing all four fields asserts the response carries the { id, name, description, createdAt } shape (a missing field fails the capture).",
+          "kind": "action",
+          "op": "api",
+          "intent": "POST /v1/items creates our namespaced item",
+          "method": "POST",
+          "api_path": "/v1/items",
+          "body": { "name": "QA item {{run_id}}", "description": "created by {{run_id}}" },
+          "status": 201,
+          "capture": {
+            "item_id": "$.id",
+            "created_name": "$.name",
+            "created_description": "$.description",
+            "created_at": "$.createdAt"
+          }
+        },
+        {
+          "_note": "OUTCOME — the create response echoed the name we sent (owned-data: the value was produced by this run).",
+          "kind": "assert",
+          "op": "assert",
+          "intent": "create response echoes our namespaced name",
+          "expected": { "kind": "capture_equals", "capture_name": "created_name", "value": "QA item {{run_id}}" }
+        },
+        {
+          "_note": "OUTCOME — the create response echoed the description we sent.",
+          "kind": "assert",
+          "op": "assert",
+          "intent": "create response echoes our description",
+          "expected": { "kind": "capture_equals", "capture_name": "created_description", "value": "created by {{run_id}}" }
+        },
+        {
+          "_note": "Read the item back by id; capture the name for assertion.",
+          "kind": "action",
+          "op": "api",
+          "intent": "GET /v1/items/:id returns 200 for our item",
+          "method": "GET",
+          "api_path": "/v1/items/{{item_id}}",
+          "status": 200,
+          "capture": { "read_name": "$.name" }
+        },
+        {
+          "_note": "OUTCOME — the fetched item has the name we created (proves the row persisted).",
+          "kind": "assert",
+          "op": "assert",
+          "intent": "GET by id returns our namespaced name",
+          "expected": { "kind": "capture_equals", "capture_name": "read_name", "value": "QA item {{run_id}}" }
+        },
+        {
+          "_note": "List all items; capture the whole array to prove our row is present in the collection view.",
+          "kind": "action",
+          "op": "api",
+          "intent": "GET /v1/items returns the list",
+          "method": "GET",
+          "api_path": "/v1/items",
+          "status": 200,
+          "capture": { "all_items": "$" }
+        },
+        {
+          "_note": "Count only OUR row in the list by matching the captured id — owned-data by form (peers carry a different id). Minimal JSONPath can't count, so jq does it.",
+          "kind": "action",
+          "op": "transform",
+          "intent": "count our item in the list by id",
+          "from_capture": "all_items",
+          "vars": { "wid": "item_id" },
+          "expr": "[ .[] | select(.id == $wid) ] | length",
+          "capture": { "our_count": "$" }
+        },
+        {
+          "_note": "OUTCOME — exactly one of our rows appears in GET /v1/items.",
+          "kind": "assert",
+          "op": "assert",
+          "intent": "our item appears exactly once in the list",
+          "expected": { "kind": "capture_equals", "capture_name": "our_count", "value": "1" }
+        },
+        {
+          "_note": "Update the description; status:200 pins the PATCH code, capture the returned description.",
+          "kind": "action",
+          "op": "api",
+          "intent": "PATCH /v1/items/:id updates the description",
+          "method": "PATCH",
+          "api_path": "/v1/items/{{item_id}}",
+          "body": { "description": "updated by {{run_id}}" },
+          "status": 200,
+          "capture": { "patched_description": "$.description" }
+        },
+        {
+          "_note": "OUTCOME — the PATCH response carries the new description.",
+          "kind": "assert",
+          "op": "assert",
+          "intent": "PATCH response returns the new description",
+          "expected": { "kind": "capture_equals", "capture_name": "patched_description", "value": "updated by {{run_id}}" }
+        },
+        {
+          "_note": "BACKEND EFFECT — re-GET and confirm the update persisted, not just echoed.",
+          "kind": "action",
+          "op": "api",
+          "intent": "GET /v1/items/:id reflects the updated description",
+          "method": "GET",
+          "api_path": "/v1/items/{{item_id}}",
+          "status": 200,
+          "capture": { "reread_description": "$.description" }
+        },
+        {
+          "_note": "OUTCOME — the persisted description matches what we PATCHed.",
+          "kind": "assert",
+          "op": "assert",
+          "intent": "the updated description persisted server-side",
+          "expected": { "kind": "capture_equals", "capture_name": "reread_description", "value": "updated by {{run_id}}" }
+        },
+        {
+          "_note": "Delete our item; status:204 pins the No Content code (also our namespaced-data cleanup).",
+          "kind": "action",
+          "op": "api",
+          "intent": "DELETE /v1/items/:id returns 204",
+          "method": "DELETE",
+          "api_path": "/v1/items/{{item_id}}",
+          "status": 204
+        },
+        {
+          "_note": "BACKEND EFFECT — the deleted id now 404s, proving DELETE removed the row (not just returned 204). status:404 makes not-found the expected outcome.",
+          "kind": "action",
+          "op": "api",
+          "intent": "GET a deleted id returns 404",
+          "method": "GET",
+          "api_path": "/v1/items/{{item_id}}",
+          "status": 404
+        }
+      ]
+    },
+    {
+      "name": "Validation: create rejects empty and missing name with 400",
+      "tags": ["items", "validation", "edge"],
+      "steps": [
+        {
+          "_note": "Empty name is invalid; status:400 pins the rejection and bypasses the non-2xx guard so this is the expected outcome.",
+          "kind": "action",
+          "op": "api",
+          "intent": "POST /v1/items with empty name is rejected 400",
+          "method": "POST",
+          "api_path": "/v1/items",
+          "body": { "name": "", "description": "empty name {{run_id}}" },
+          "status": 400
+        },
+        {
+          "_note": "Missing name entirely is also invalid -> 400.",
+          "kind": "action",
+          "op": "api",
+          "intent": "POST /v1/items with missing name is rejected 400",
+          "method": "POST",
+          "api_path": "/v1/items",
+          "body": { "description": "missing name {{run_id}}" },
+          "status": 400
+        }
+      ]
+    },
+    {
+      "name": "Versioning: the unversioned items path is not served",
+      "tags": ["items", "versioning", "edge"],
+      "steps": [
+        {
+          "_note": "GET /items (no /v1) must 404 — the API is only exposed under the version prefix.",
+          "kind": "action",
+          "op": "api",
+          "intent": "GET /items (unversioned) returns 404",
+          "method": "GET",
+          "api_path": "/items",
+          "status": 404
+        }
+      ]
+    }
+  ]
+}
