@@ -1,3 +1,70 @@
+# fleet-nestjs-app
+
+A **NestJS (TypeScript) + TypeORM** application scaffolded on the fleet lifecycle
+harness. It ships one complete sample CRUD resource (`items`), a DB-backed health
+check, and Postgres migrations, all wired so the fleet can deploy it unchanged.
+
+## The App
+
+- **Stack:** NestJS 10, TypeORM 0.3 over Postgres (`pg`), `class-validator` DTOs.
+- **Config:** the database connection is read from `DATABASE_URL` (injected by the
+  fleet; never hardcoded). `PORT` and `BASE_PATH` are read at boot — the server
+  listens on `0.0.0.0:$PORT`, and when `BASE_PATH` is set every route is prefixed
+  with it **except** `GET /health`.
+- **Schema:** `synchronize` is off everywhere. All schema changes go through
+  migrations (`src/migrations/`), run automatically on start.
+
+### Endpoints
+
+| Method | Path          | Success | Notes                                   |
+| ------ | ------------- | ------- | --------------------------------------- |
+| GET    | `/health`     | 200     | Terminus check with a live DB ping      |
+| POST   | `/items`      | 201     | Body `{ name, description? }`           |
+| GET    | `/items`      | 200     | Newest first                            |
+| GET    | `/items/:id`  | 200     | 404 if missing, 400 if `id` isn't a UUID |
+| PATCH  | `/items/:id`  | 200     | Partial update; 404 if missing          |
+| DELETE | `/items/:id`  | 204     | 404 if missing                          |
+
+Invalid or unknown-field bodies are rejected with 400 by the global
+`ValidationPipe`. An `item` is `{ id, name, description, createdAt }` where
+`createdAt` is an ISO timestamp.
+
+### Running it
+
+```sh
+# Standalone (needs a reachable Postgres in DATABASE_URL):
+export DATABASE_URL='postgres://user:pass@host:5432/db'
+PORT=3001 bin/run          # npm ci -> build -> migrate -> serve on :3001
+curl http://localhost:3001/health   # -> 200
+
+# Under the fleet: it injects PORT / BASE_PATH / DATABASE_URL and calls bin/run.
+```
+
+Local development uses the usual Nest scripts: `npm run start:dev` (watch mode),
+`npm run build`, `npm run lint`, `npm run typecheck`. The lifecycle commands the
+fleet uses live in `fleet.conf`.
+
+### Adding a migration
+
+Schema changes are migration-only. After editing an entity:
+
+```sh
+# 1. Build so the compiled datasource/entities exist, then diff against the DB:
+npm run build
+npm run migration:generate -- src/migrations/<Name>
+# (or hand-write one:  npm run migration:create -- src/migrations/<Name>)
+
+# 2. Apply it. This is what START_CMD runs on every deploy, so a fresh DB
+#    catches up automatically:
+npm run migration:run
+```
+
+`migration:run` uses the **compiled** datasource (`dist/database/data-source.js`),
+so run `npm run build` first when applying locally. `migration:generate` runs the
+TypeScript datasource directly via ts-node.
+
+---
+
 # fleet-template-v1
 
 ## What This Template Is
