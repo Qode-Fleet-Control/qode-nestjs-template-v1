@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { RequestMethod, ValidationPipe, VersioningType } from '@nestjs/common';
+import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { DEFAULT_API_VERSION } from './common/api-versions';
@@ -12,14 +12,12 @@ async function bootstrap() {
   app.set('trust proxy', 1);
 
   // Mount under BASE_PATH when the app is served from a sub-path behind a
-  // reverse proxy; unset/empty serves at the host root. /health opts out so
-  // the readiness probe stays at /health regardless of the prefix.
+  // reverse proxy; unset/empty serves at the host root. The proxy forwards the
+  // full path, so every route including /health resolves under the prefix.
   const raw = (process.env.BASE_PATH ?? '').trim();
   const basePath = raw ? '/' + raw.replace(/^\/+|\/+$/g, '') : '';
   if (basePath) {
-    app.setGlobalPrefix(basePath, {
-      exclude: [{ path: 'health', method: RequestMethod.GET }],
-    });
+    app.setGlobalPrefix(basePath);
   }
 
   app.useGlobalPipes(
@@ -31,8 +29,8 @@ async function bootstrap() {
   );
 
   // URI versioning: routes resolve version -> route, so the items resource
-  // serves under /v1/.... /health opts out with VERSION_NEUTRAL and stays at
-  // the root for the fleet's readiness probe.
+  // serves under /v1/.... /health opts out with VERSION_NEUTRAL so it needs no
+  // version segment and resolves at <BASE_PATH>/health for the readiness probe.
   app.enableVersioning({
     type: VersioningType.URI,
     defaultVersion: DEFAULT_API_VERSION,
