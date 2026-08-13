@@ -11,7 +11,7 @@ WORKDIR /app
 # Install deps first so the layer caches on lockfile changes only. devDeps are
 # needed for `nest build`, so install everything, build, then prune.
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --include=dev
 
 COPY . .
 RUN npm run build && npm prune --omit=dev
