@@ -13,21 +13,59 @@ check, and Postgres migrations, all wired so the fleet can deploy it unchanged.
   with it **except** `GET /health`.
 - **Schema:** `synchronize` is off everywhere. All schema changes go through
   migrations (`src/migrations/`), run automatically on start.
+- **Versioning:** URI versioning is enabled (`VersioningType.URI`,
+  `defaultVersion: '1'`). Routes resolve as **global prefix → version → route**,
+  so the `items` resource serves under `/v1/...`. `GET /health` opts out with
+  `VERSION_NEUTRAL` and stays at plain `/health`.
 
 ### Endpoints
 
-| Method | Path          | Success | Notes                                   |
-| ------ | ------------- | ------- | --------------------------------------- |
-| GET    | `/health`     | 200     | Terminus check with a live DB ping      |
-| POST   | `/items`      | 201     | Body `{ name, description? }`           |
-| GET    | `/items`      | 200     | Newest first                            |
-| GET    | `/items/:id`  | 200     | 404 if missing, 400 if `id` isn't a UUID |
-| PATCH  | `/items/:id`  | 200     | Partial update; 404 if missing          |
-| DELETE | `/items/:id`  | 204     | 404 if missing                          |
+| Method | Path            | Success | Notes                                   |
+| ------ | --------------- | ------- | --------------------------------------- |
+| GET    | `/health`       | 200     | Terminus check with a live DB ping; unversioned |
+| POST   | `/v1/items`     | 201     | Body `{ name, description? }`           |
+| GET    | `/v1/items`     | 200     | Newest first                            |
+| GET    | `/v1/items/:id` | 200     | 404 if missing, 400 if `id` isn't a UUID |
+| PATCH  | `/v1/items/:id` | 200     | Partial update; 404 if missing          |
+| DELETE | `/v1/items/:id` | 204     | 404 if missing                          |
 
-Invalid or unknown-field bodies are rejected with 400 by the global
-`ValidationPipe`. An `item` is `{ id, name, description, createdAt }` where
-`createdAt` is an ISO timestamp.
+The version segment is required: `GET /items` (no `/v1`) returns 404. Invalid or
+unknown-field bodies are rejected with 400 by the global `ValidationPipe`. An
+`item` is `{ id, name, description, createdAt }` where `createdAt` is an ISO
+timestamp.
+
+#### Enabling / disabling versions (`API_VERSIONS_ENABLED`)
+
+`API_VERSIONS_ENABLED` is a comma-separated list of the API versions the app
+serves — `API_VERSIONS_ENABLED='1'` or `API_VERSIONS_ENABLED='1,2'`. **Unset
+defaults to `'1'`**, so a stock deploy serves v1 with no configuration.
+
+A global `VersionGate` guard resolves the version of the matched route and, when
+that version is not in the enabled set, returns **`410 Gone`** (e.g. `API v2 is
+disabled`). This is distinct from a **`404`**, which is what an unknown version
+segment (`/v9/...`, a version that never existed) returns from the router. So:
+
+- `410 Gone` — a real, known version that is currently switched off.
+- `404 Not Found` — a version segment that was never mounted.
+
+`GET /health` is `VERSION_NEUTRAL` and is **exempt** — it keeps returning `200`
+regardless of `API_VERSIONS_ENABLED`, so the readiness probe is never gated.
+
+Flipping it is env-only: change `API_VERSIONS_ENABLED` and **restart/reload the
+fleet** (`bin/restart` or `bin/reload`). It takes effect on the next boot with no
+rebuild, since runtime deploys here are operator-controlled. For example, setting
+`API_VERSIONS_ENABLED='2'` (excluding `'1'`) makes every `/v1/...` route return
+`410` while `/health` still returns `200`.
+
+#### Introducing a v2
+
+The version lives on the controller, so a second version is additive — the `/v1`
+routes keep working untouched. Either add a controller with
+`@Controller({ path: '...', version: '2' })` to serve it at `/v2/...` (or
+`@Version('2')` on an individual route method), or add a new versioned module for
+the v2 surface. Routes without a version fall back to the `defaultVersion`
+(`'1'`); mark any route that must answer on every version with `VERSION_NEUTRAL`,
+as `/health` does.
 
 ### Running it
 
@@ -35,6 +73,12 @@ Invalid or unknown-field bodies are rejected with 400 by the global
 # Standalone (needs a reachable Postgres in DATABASE_URL):
 export DATABASE_URL='postgres://user:pass@host:5432/db'
 PORT=3001 bin/run          # npm ci -> build -> migrate -> serve on :3001
+curl http://localhost:3001/health   # -> 200
+curl http://localhost:3001/v1/items # -> 200
+
+# Disable v1 to see the 410 gate (health stays exempt):
+API_VERSIONS_ENABLED='2' PORT=3001 bin/run
+curl http://localhost:3001/v1/items # -> 410 (API v1 is disabled)
 curl http://localhost:3001/health   # -> 200
 
 # Under the fleet: it injects PORT / BASE_PATH / DATABASE_URL and calls bin/run.
