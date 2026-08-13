@@ -8,14 +8,15 @@ check, and Postgres migrations, all wired so the fleet can deploy it unchanged.
 
 - **Stack:** NestJS 10, TypeORM 0.3 over Postgres (`pg`), `class-validator` DTOs.
 - **Config:** the database connection is read from `DATABASE_URL` (injected by the
-  fleet; never hardcoded). `PORT` and `BASE_PATH` are read at boot — the server
-  listens on `0.0.0.0:$PORT`, and when `BASE_PATH` is set every route is prefixed
-  with it **except** `GET /health`.
+  fleet; never hardcoded). `PORT` is read at boot — the server listens on
+  `0.0.0.0:$PORT`. The fleet gives each app its own subdomain and Kong strips the
+  path, so routes serve at the domain **root** (`/v1/...`, and `/health` at `/`);
+  the app does **not** prefix its routes.
 - **Schema:** `synchronize` is off everywhere. All schema changes go through
   migrations (`src/migrations/`), run automatically on start.
 - **Versioning:** URI versioning is enabled (`VersioningType.URI`,
-  `defaultVersion: '1'`). Routes resolve as **global prefix → version → route**,
-  so the `items` resource serves under `/v1/...`. `GET /health` opts out with
+  `defaultVersion: '1'`). Routes resolve as **version → route**, so the `items`
+  resource serves under `/v1/...`. `GET /health` opts out with
   `VERSION_NEUTRAL` and stays at plain `/health`.
 
 ### Endpoints
@@ -81,7 +82,7 @@ API_VERSIONS_ENABLED='2' PORT=3001 bin/run
 curl http://localhost:3001/v1/items # -> 410 (API v1 is disabled)
 curl http://localhost:3001/health   # -> 200
 
-# Under the fleet: it injects PORT / BASE_PATH / DATABASE_URL and calls bin/run.
+# Under the fleet: it injects PORT / DATABASE_URL and calls bin/run.
 ```
 
 Local development uses the usual Nest scripts: `npm run start:dev` (watch mode),
@@ -118,7 +119,7 @@ managed by the fleet platform. It gives any app — Node, Python, Go, a Docker
 Compose stack, anything — a uniform way to be deployed and controlled, without
 the fleet needing to know a single thing about your stack.
 
-The fleet injects runtime variables into the environment (`PORT`, `BASE_PATH`,
+The fleet injects runtime variables into the environment (`PORT`,
 `DATABASE_URL`) and calls `./bin/run` to deploy. Everything project-specific —
 how to install, build, and start your app — lives in **one file: `fleet.conf`**.
 That is the only file you edit per project.
@@ -153,10 +154,10 @@ START_CMD='node dist/server.js'   # must listen on $PORT; run in foreground
 RELOAD_CMD=''           # optional; empty → falls back to stop+start
 ```
 
-> **Critical rule:** single-quote any command that uses `$PORT` or
-> `$BASE_PATH`. Single quotes defer variable expansion to **runtime** — when the
-> command actually runs, with the fleet-injected value — rather than at the
-> moment `fleet.conf` is sourced (when those values aren't set yet). Use
+> **Critical rule:** single-quote any command that uses `$PORT`. Single quotes
+> defer variable expansion to **runtime** — when the command actually runs, with
+> the fleet-injected value — rather than at the moment `fleet.conf` is sourced
+> (when it isn't set yet). Use
 > `START_CMD='gunicorn app:app --bind 0.0.0.0:$PORT'`, never double quotes.
 
 ## How the Lifecycle Works
@@ -226,7 +227,7 @@ curl http://localhost:3001/   # should 200
 
 ### Step 5 — Connect to the fleet
 
-Point the fleet at your repo. It will clone it, inject `PORT` / `BASE_PATH` /
+Point the fleet at your repo. It will clone it, inject `PORT` /
 `DATABASE_URL`, and call `bin/run`. As long as your `START_CMD` listens on
 `$PORT` and `HEALTH_PATH` returns 200, the fleet will mark the app healthy.
 
