@@ -1,3 +1,9 @@
 .env
 .fleet/
 .fleet-deploy.log
+
+# Node / NestJS build output and dependencies
+node_modules/
+dist/
+*.tsbuildinfo
+npm-debug.log*
