@@ -9,38 +9,38 @@ check, and Postgres migrations, all wired so the fleet can deploy it unchanged.
 - **Stack:** NestJS 10, TypeORM 0.3 over Postgres (`pg`), `class-validator` DTOs.
 - **Config:** the database connection is read from `DATABASE_URL` (injected by the
   fleet; never hardcoded). `PORT` is read at boot — the server listens on
-  `0.0.0.0:$PORT`. `BASE_PATH` controls where the routes mount — see
-  [Routing and `BASE_PATH`](#routing-and-base_path) below.
+  `0.0.0.0:$PORT`. `BASE_PATH` is the routing prefix every route mounts under —
+  see [Routing and `BASE_PATH`](#routing-and-base_path) below.
 - **Schema:** `synchronize` is off everywhere. All schema changes go through
   migrations (`src/migrations/`), run automatically on start.
 - **Versioning:** URI versioning is enabled (`VersioningType.URI`,
   `defaultVersion: '1'`). Routes resolve as **version → route**, so the `items`
   resource serves under `/v1/...`. `GET /health` opts out with
-  `VERSION_NEUTRAL` and stays at plain `/health`.
+  `VERSION_NEUTRAL`, so it carries no version segment — but it still mounts under
+  the routing prefix (`$BASE_PATH/health`), like every other route.
 
 ### Routing and `BASE_PATH`
 
-Where the app's routes mount depends on `BASE_PATH`, which supports two operating
-modes:
+The fleet serves each app behind an internal proxy keyed on the workspace host and
+the app's port. It injects `BASE_PATH=/direct/<hostname>:<port>` — for example
+`/direct/dy-coord-9:3000` — as the routing prefix, and forwards the **full path
+without stripping it**: a request the fleet routes as
+`/direct/dy-coord-9:3000/v1/items` arrives at the app with that whole path intact.
 
-- **Fleet / Kong mode (the default).** Leave `BASE_PATH` empty or unset. The fleet
-  gives each app its own subdomain and Kong routes it at `/` with `strip-path: true`,
-  so the app serves at the domain **root** — `/v1/items`, `/health`, and so on. Set
-  nothing:
+To match, the app calls `setGlobalPrefix(BASE_PATH)` with **no exclusions**, so
+**every** route mounts under the prefix — including the health check. With
+`BASE_PATH=/direct/dy-coord-9:3000` the routes resolve as:
 
-  ```sh
-  # BASE_PATH unset (or "")
-  ```
+```
+/direct/dy-coord-9:3000/health      → the readiness probe
+/direct/dy-coord-9:3000/v1/items    → the items resource
+```
 
-- **Path-mounting proxy mode.** When a shared proxy mounts the app under a sub-path
-  instead of a dedicated subdomain, set `BASE_PATH` to that prefix, with a leading
-  slash and no trailing slash. The app then prefixes every route with it — e.g.
-  `/v1/items` becomes `/yourprefix/v1/items`. `/health` stays at the root so a direct
-  pod probe can reach it without knowing the prefix:
-
-  ```sh
-  BASE_PATH=/yourprefix
-  ```
+`BASE_PATH` is fleet-injected; in a fleet deployment you do **not** set it by hand.
+Left empty or unset (as when running standalone), the global prefix is skipped and
+routes serve at the host root — `/health`, `/v1/items`. There is no mode where the
+health check lives at a bare `/health` while the rest of the app is prefixed: health
+always mounts under the same prefix as every other route.
 
 ### Endpoints
 
