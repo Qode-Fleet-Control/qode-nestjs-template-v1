@@ -1,9 +1,14 @@
-.env
+# fleet lifecycle state (pidfile etc.)
 .fleet/
-.fleet-deploy.log
 
-# Node / NestJS build output and dependencies
-node_modules/
-dist/
-*.tsbuildinfo
-npm-debug.log*
+# local env — never commit real secrets
+.env
+
+# logs
+*.log
+
+# add your language's dependency + build output dirs below, e.g.
+# node_modules/  .next/  dist/     (Node)
+# __pycache__/  .venv/  *.pyc      (Python)
+# target/                          (Rust/Java)
+# bin/  vendor/                    (Go)

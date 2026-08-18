@@ -68,7 +68,7 @@ exec_step() { # $1=label  $2=command
   echo "fleet: starting $NAME  (port=$PORT base_path=${BASE_PATH:-/})"
   echo "fleet: [$label] $cmd"
   echo $$ > "$PIDFILE"
-  exec bash -c "$cmd"
+  eval "exec $cmd"
 }
 
 # Is anything listening on $PORT?
