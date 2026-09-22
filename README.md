@@ -263,3 +263,27 @@ Point the fleet at your repo. It will clone it, inject `PORT` /
   the fleet injects secrets via the environment.
 - **`bin/_common.sh` is shared infrastructure** — don't edit it per project. All
   project-specific configuration belongs in `fleet.conf`.
+
+## Rule: everything under BASE_PATH
+
+The fleet serves this app under `BASE_PATH=/direct/<agent>:<port>` and nginx
+forwards that prefix **unchanged** — it is not stripped. So every route, redirect
+and asset URL has to carry it.
+
+`src/main.ts` already does the mounting: it normalises `BASE_PATH` and calls
+`app.setGlobalPrefix(basePath)`, so controller routes are prefixed for free and
+`@Controller({ path: 'health', version: VERSION_NEUTRAL })` resolves at
+`<BASE_PATH>/health`. `app.set('trust proxy', 1)` makes `req.protocol` and
+`req.ip` reflect the external values behind the proxy.
+
+What is **not** handled for you:
+
+- Any absolute URL you build by hand — a `res.redirect('/x')`, a `Location`
+  header, a link or asset path in an HTML response. Prefix it with the same
+  normalised `BASE_PATH` value.
+- Any client-side `fetch` you add. A framework prefix never rewrites a URL
+  string in code.
+
+`HEALTH_PATH` in `fleet.conf` stays **un-prefixed** (`/health`): the fleet
+prepends `$BASE_PATH` itself, so an embedded `/direct/…` there is doubled and the
+health check never passes.
