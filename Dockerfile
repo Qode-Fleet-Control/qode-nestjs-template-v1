@@ -1,7 +1,7 @@
 # Production image for the fleet NestJS app. Install + build happen at image
 # build time; the container's entrypoint only runs migrations then starts the
 # server (via bin/start, so fleet.conf stays the single source of truth for the
-# start command). The fleet injects PORT / BASE_PATH / DATABASE_URL at runtime.
+# start command). The fleet injects PORT / DATABASE_URL at runtime.
 FROM node:22-bookworm-slim
 
 ARG BUILD_ID=unknown

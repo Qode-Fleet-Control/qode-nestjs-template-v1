@@ -1,7 +1,6 @@
 {
   "_about": "QA scenario suite for the items API (NT-12 extends NT-3; verifies merged NT-2/NT-10). Pure JSON/HTTP — no browser DOM. Every scenario drives the real API with `api` steps and asserts the outcome with `capture_equals` (owned-data by form, per SUITES.md §8) or an exact `status` pin, namespacing created rows with {{run_id}}. The CRUD round-trip proves the backend effect by deleting the row and re-GETting it for a 404. The `_about`/`_note` fields are documentation only and ignored by the loader.",
   "_note_base_url": "base_url is a LOOPBACK DEFAULT (matches the self-hosted QA container, which exposes :8080). The tester overrides it per run with its injected base_url (service.execute base_url_override, which replaces config.base_url before validation), so no external port is hardcoded here. Loopback hosts are allowed by validator rule 1 (SUITES.md §0).",
-  "_note_prefixed_mode": "KNOWN GAP — a BASE_PATH=/api prefixed-mode CRUD scenario is NOT expressible in this QA contract and is deliberately omitted. BASE_PATH is a DEPLOY-TIME env the coordinator's bin/run injects from fleet config (coordinator/core.py sets env[BASE_PATH]); a QA suite cannot set it. The scenario contract (qa/contract.py RunConfig) carries only base_url/parallelism/video/default_timeout_ms/stubs — there is no per-run app-env field, and `stubs` only inject a stub-server URL, not an arbitrary value. One QA run drives ONE booted app instance, so root-mode (/v1/items) and prefixed-mode (/api/v1/items) cannot both be green in the same run. This is the same limitation that kept the API_VERSIONS_ENABLED 410 scenario out (fleet-kb 88f70db909c5). Cover prefixed mode instead against a dedicated deployment booted with BASE_PATH=/api, pointing the tester's injected base_url at it (the /health-at-root exclusion is then asserted with GET /health -> 200 alongside GET /api/v1/items). Raised for the coordinator as a design/harness item.",
   "schema_version": "1.0.0",
   "run_id": "items-api",
   "config": {
@@ -21,7 +20,7 @@
       "tags": ["health", "smoke"],
       "steps": [
         {
-          "_note": "GET /health is unversioned and unprefixed; status:200 pins the code (a non-200 gates the step). ROOT-MODE ASSUMPTION: this path assumes an empty-BASE_PATH (root-mode) deployment. Since NT-14 removed the /health exclusion from setGlobalPrefix, a fleet deployment with BASE_PATH injected serves health at /<BASE_PATH>/health, not /health; the harness cannot inject BASE_PATH per-run (documented in _note_prefixed_mode).",
+          "_note": "GET /health is unversioned; status:200 pins the code (a non-200 gates the step).",
           "kind": "action",
           "op": "api",
           "intent": "GET /health returns 200",
@@ -211,7 +210,7 @@
       "_note": "NT-10 set `trust proxy` so req.protocol reflects X-Forwarded-Proto from Kong. There is no HTTPS-redirect middleware, so a forwarded https hop must be a no-op: the request still resolves to a 200, never a 4xx or a 3xx redirect. status:200 pins that exactly — httpx does not follow redirects, so a 301/302 loop or a 400 fails the step.",
       "steps": [
         {
-          "_note": "The unversioned readiness probe stays reachable and 200 with a forwarded-proto hop. ROOT-MODE ASSUMPTION: this path assumes an empty-BASE_PATH (root-mode) deployment. Since NT-14 removed the /health exclusion from setGlobalPrefix, a fleet deployment with BASE_PATH injected serves health at /<BASE_PATH>/health, not /health; the harness cannot inject BASE_PATH per-run (documented in _note_prefixed_mode).",
+          "_note": "The unversioned readiness probe stays reachable and 200 with a forwarded-proto hop.",
           "kind": "action",
           "op": "api",
           "intent": "GET /health with X-Forwarded-Proto: https returns 200 (no redirect, no 400)",
@@ -221,7 +220,7 @@
           "status": 200
         },
         {
-          "_note": "A versioned route still resolves under the forwarded-proto hop — no redirect loop introduced by trusting the proxy. ROOT-MODE ASSUMPTION: this path assumes an empty-BASE_PATH (root-mode) deployment. In a fleet deployment with BASE_PATH injected the versioned route resolves at /<BASE_PATH>/v1/items; the harness cannot inject BASE_PATH per-run (documented in _note_prefixed_mode).",
+          "_note": "A versioned route still resolves under the forwarded-proto hop — no redirect loop introduced by trusting the proxy.",
           "kind": "action",
           "op": "api",
           "intent": "GET /v1/items with X-Forwarded-Proto: https returns 200 (no redirect, no 400)",

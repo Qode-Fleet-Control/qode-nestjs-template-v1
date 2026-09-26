@@ -6,7 +6,7 @@ import {
 } from '@nestjs/terminus';
 
 // VERSION_NEUTRAL keeps /health answering regardless of the default version, so
-// it stays at plain /health (it is also excluded from the global prefix).
+// it stays at plain /health.
 @Controller({ path: 'health', version: VERSION_NEUTRAL })
 export class HealthController {
   constructor(

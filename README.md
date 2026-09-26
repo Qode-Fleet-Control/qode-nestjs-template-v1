@@ -9,38 +9,13 @@ check, and Postgres migrations, all wired so the fleet can deploy it unchanged.
 - **Stack:** NestJS 10, TypeORM 0.3 over Postgres (`pg`), `class-validator` DTOs.
 - **Config:** the database connection is read from `DATABASE_URL` (injected by the
   fleet; never hardcoded). `PORT` is read at boot — the server listens on
-  `0.0.0.0:$PORT`. `BASE_PATH` is the routing prefix every route mounts under —
-  see [Routing and `BASE_PATH`](#routing-and-base_path) below.
+  `0.0.0.0:$PORT`. The app is served at the root (`/`) of its own hostname.
 - **Schema:** `synchronize` is off everywhere. All schema changes go through
   migrations (`src/migrations/`), run automatically on start.
 - **Versioning:** URI versioning is enabled (`VersioningType.URI`,
   `defaultVersion: '1'`). Routes resolve as **version → route**, so the `items`
   resource serves under `/v1/...`. `GET /health` opts out with
-  `VERSION_NEUTRAL`, so it carries no version segment — but it still mounts under
-  the routing prefix (`$BASE_PATH/health`), like every other route.
-
-### Routing and `BASE_PATH`
-
-The fleet serves each app behind an internal proxy keyed on the workspace host and
-the app's port. It injects `BASE_PATH=/direct/<hostname>:<port>` — for example
-`/direct/dy-coord-9:3000` — as the routing prefix, and forwards the **full path
-without stripping it**: a request the fleet routes as
-`/direct/dy-coord-9:3000/v1/items` arrives at the app with that whole path intact.
-
-To match, the app calls `setGlobalPrefix(BASE_PATH)` with **no exclusions**, so
-**every** route mounts under the prefix — including the health check. With
-`BASE_PATH=/direct/dy-coord-9:3000` the routes resolve as:
-
-```
-/direct/dy-coord-9:3000/health      → the readiness probe
-/direct/dy-coord-9:3000/v1/items    → the items resource
-```
-
-`BASE_PATH` is fleet-injected; in a fleet deployment you do **not** set it by hand.
-Left empty or unset (as when running standalone), the global prefix is skipped and
-routes serve at the host root — `/health`, `/v1/items`. There is no mode where the
-health check lives at a bare `/health` while the rest of the app is prefixed: health
-always mounts under the same prefix as every other route.
+  `VERSION_NEUTRAL`, so it carries no version segment and serves at `/health`.
 
 ### Endpoints
 
@@ -263,27 +238,3 @@ Point the fleet at your repo. It will clone it, inject `PORT` /
   the fleet injects secrets via the environment.
 - **`bin/_common.sh` is shared infrastructure** — don't edit it per project. All
   project-specific configuration belongs in `fleet.conf`.
-
-## Rule: everything under BASE_PATH
-
-The fleet serves this app under `BASE_PATH=/direct/<agent>:<port>` and nginx
-forwards that prefix **unchanged** — it is not stripped. So every route, redirect
-and asset URL has to carry it.
-
-`src/main.ts` already does the mounting: it normalises `BASE_PATH` and calls
-`app.setGlobalPrefix(basePath)`, so controller routes are prefixed for free and
-`@Controller({ path: 'health', version: VERSION_NEUTRAL })` resolves at
-`<BASE_PATH>/health`. `app.set('trust proxy', 1)` makes `req.protocol` and
-`req.ip` reflect the external values behind the proxy.
-
-What is **not** handled for you:
-
-- Any absolute URL you build by hand — a `res.redirect('/x')`, a `Location`
-  header, a link or asset path in an HTML response. Prefix it with the same
-  normalised `BASE_PATH` value.
-- Any client-side `fetch` you add. A framework prefix never rewrites a URL
-  string in code.
-
-`HEALTH_PATH` in `fleet.conf` stays **un-prefixed** (`/health`): the fleet
-prepends `$BASE_PATH` itself, so an embedded `/direct/…` there is doubled and the
-health check never passes.

@@ -11,15 +11,6 @@ async function bootstrap() {
   // req.protocol/req.ip reflect the external values from the X-Forwarded-* headers.
   app.set('trust proxy', 1);
 
-  // Mount under BASE_PATH when the app is served from a sub-path behind a
-  // reverse proxy; unset/empty serves at the host root. The proxy forwards the
-  // full path, so every route including /health resolves under the prefix.
-  const raw = (process.env.BASE_PATH ?? '').trim();
-  const basePath = raw ? '/' + raw.replace(/^\/+|\/+$/g, '') : '';
-  if (basePath) {
-    app.setGlobalPrefix(basePath);
-  }
-
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -30,7 +21,7 @@ async function bootstrap() {
 
   // URI versioning: routes resolve version -> route, so the items resource
   // serves under /v1/.... /health opts out with VERSION_NEUTRAL so it needs no
-  // version segment and resolves at <BASE_PATH>/health for the readiness probe.
+  // version segment and resolves at /health for the readiness probe.
   app.enableVersioning({
     type: VersioningType.URI,
     defaultVersion: DEFAULT_API_VERSION,
