@@ -158,6 +158,33 @@ RELOAD_CMD=''           # optional; empty → falls back to stop+start
 > (when it isn't set yet). Use
 > `START_CMD='gunicorn app:app --bind 0.0.0.0:$PORT'`, never double quotes.
 
+## The docker runtime
+
+`bin/_common.sh` picks the commands by `FLEET_RUNTIME`:
+
+| `FLEET_RUNTIME` | Runs | Where |
+| --- | --- | --- |
+| `docker` (default) | `DOCKER_BUILD_CMD` → `DOCKER_START_CMD` | the fleet: every coordinator has a private docker (sysbox docker-in-docker) |
+| `process` | `INSTALL_CMD` → `BUILD_CMD` → `START_CMD` | the QA tester's self-host, and local work without docker |
+| `auto` | docker when `FLEET_APP_DIND` is set, else process | |
+
+On the fleet the coordinator itself holds `$PORT` and forwards it into its private
+docker, so the app **must** run as a container publishing `${PORT}:${PORT}` — a plain
+process cannot bind the port, and the coordinator refuses to deploy a `fleet.conf`
+without `DOCKER_START_CMD`. `compose.yaml` must:
+
+- build the app's `Dockerfile`, serving on `0.0.0.0:$PORT` inside the container;
+- publish `"${PORT:-3000}:${PORT:-3000}"` and set `PORT: ${PORT:-3000}`;
+- list the fleet's variables under `environment:` **without values** (`DATABASE_URL:`,
+  `REDIS_URL:`, `S3_ENDPOINT:` …) so compose passes them through — the fleet attaches the
+  workspace's Postgres / Redis / MinIO / Mailpit to the private docker under the very
+  hostnames those URLs name;
+- keep any database it brings for local work under a `local` profile, so it never starts
+  on the fleet.
+
+`compose.yaml` here is that skeleton. Locally, `PORT=3001 bin/run` runs the docker
+runtime; `FLEET_RUNTIME=process PORT=3001 bin/run` runs the plain process.
+
 ## How the Lifecycle Works
 
 | Script | What it does | When to use |
@@ -166,7 +193,7 @@ RELOAD_CMD=''           # optional; empty → falls back to stop+start
 | `bin/start` | `START_CMD` only | Restart without rebuild |
 | `bin/restart` | stop + `bin/run` | After a code/dep change |
 | `bin/reload` | `RELOAD_CMD`, or stop+start if empty | After a config-only change |
-| `bin/stop` | Kill by pidfile or port | Tear down |
+| `bin/stop` | Kill by pidfile, `docker compose down`, free the port | Tear down |
 
 > The process PID is written to `.fleet/app.pid` so subsequent `stop`/`restart`
 > calls can find and terminate it reliably. If the pidfile is missing or stale,

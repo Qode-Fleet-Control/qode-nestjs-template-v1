@@ -5,3 +5,6 @@ dist
 .env
 *.tsbuildinfo
 npm-debug.log*
+.fleet-deploy.log
+.venv
+.bin
