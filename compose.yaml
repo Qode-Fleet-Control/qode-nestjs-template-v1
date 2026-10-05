@@ -25,7 +25,7 @@ services:
       FLEET_APP_HOST:
       FLEET_APP_URL:
       # the workspace's shared services, from the fleet
-      DATABASE_URL:
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@db:5432/app}
       PGHOST:
       PGPORT:
       PGUSER:
@@ -42,3 +42,28 @@ services:
       SMTP_URL:
       # this app's own settings
       API_VERSIONS_ENABLED:
+    # The `local` profile's Postgres, when it runs; on the fleet it doesn't (required: false).
+    depends_on:
+      db:
+        condition: service_healthy
+        required: false
+
+  # Local development only: a Postgres the fleet's DATABASE_URL replaces in Fleet Control.
+  # `docker compose --profile local up --build`.
+  db:
+    profiles: ["local"]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: app
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d app"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
