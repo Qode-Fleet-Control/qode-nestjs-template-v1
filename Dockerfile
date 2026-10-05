@@ -5,7 +5,8 @@
 FROM node:22-bookworm-slim
 
 ARG BUILD_ID=unknown
-ENV NODE_ENV=production
+# bin/start runs INSIDE this image, where there is no docker: the process runtime.
+ENV NODE_ENV=production FLEET_RUNTIME=process
 WORKDIR /app
 
 # Install deps first so the layer caches on lockfile changes only. devDeps are
