@@ -5,7 +5,8 @@
 # (fleet.conf's DOCKER_* commands → docker compose), must answer 200 on HEALTH_PATH (a TCP
 # accept when HEALTH_PATH is empty), survives bin/restart, and bin/stop leaves no container
 # behind. A job template (DOCKER_START_CMD empty) builds and its `docker compose run --rm
-# app` must exit 0.
+# app` must exit 0. A `local` compose profile (a database the stack brings for work off the
+# fleet, where the fleet's own is not there) is started here, since the runner has none.
 #
 # Shipping an image is a different workflow: manual-deploy.yml ("CI (manual)"), which
 # pushes to Artifact Registry and needs the fleet's GCP secrets and Workload Identity
@@ -38,6 +39,10 @@ jobs:
             if [ -n "${DOCKER_START_CMD:-}" ] || case "${START_CMD:-}" in *"docker compose"*) true;; *) false;; esac
             then echo "kind=http"; else echo "kind=job"; fi' >> "$GITHUB_OUTPUT"
           cat "$GITHUB_OUTPUT"
+          if docker compose --profile local config --services 2>/dev/null | grep -qvx app \
+             && [ "$(docker compose config --services | wc -l)" -lt "$(docker compose --profile local config --services | wc -l)" ]; then
+            echo "COMPOSE_PROFILES=local" >> "$GITHUB_ENV"; echo "starting the local profile"
+          fi
 
       - name: Job — build and run
         if: steps.conf.outputs.kind == 'job'
