@@ -9,12 +9,17 @@ ARG BUILD_ID=unknown
 ENV NODE_ENV=production FLEET_RUNTIME=process
 WORKDIR /app
 
+# Never run as root: build and run as the image's own `node` user (uid 1000). The UID is
+# numeric so Kubernetes can verify `runAsNonRoot` without reading /etc/passwd.
+RUN chown 1000:1000 /app
+USER 1000:1000
+
 # Install deps first so the layer caches on lockfile changes only. devDeps are
 # needed for `nest build`, so install everything, build, then prune.
-COPY package.json package-lock.json ./
+COPY --chown=1000:1000 package.json package-lock.json ./
 RUN npm ci --include=dev
 
-COPY . .
+COPY --chown=1000:1000 . .
 RUN npm run build && npm prune --omit=dev
 
 EXPOSE 3000
